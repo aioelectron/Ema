@@ -5,10 +5,13 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytz
 
 app = Flask(__name__)
 IST = pytz.timezone('Asia/Kolkata')
+
+MAX_WORKERS = 300  # Lower to 150 if Yahoo Finance rate-limits
 
 DATA_FILE = "data.json"
 
@@ -62,15 +65,14 @@ def scan_stocks():
     now = datetime.now(IST).strftime("%d %b %Y, %I:%M %p")
     min_candles = ema_period + 2
 
-    for ticker in tickers:
+    def scan_ticker(ticker):
         try:
             symbol = ticker.strip().upper() + ".NS"
             df = yf.download(symbol, period=period, interval=interval,
                              progress=False, auto_adjust=True)
 
             if df is None or len(df) < min_candles:
-                log.append(f"⚠️ {ticker}: Not enough data (need {min_candles} candles)")
-                continue
+                return ("warn", ticker, f"⚠️ {ticker}: Not enough data (need {min_candles} candles)")
 
             df[f"EMA{ema_period}"] = calculate_ema(df["Close"], ema_period)
 
@@ -82,25 +84,35 @@ def scan_stocks():
             timestamp = datetime.now(IST).strftime("%d %b %Y, %I:%M %p")
             price = round(curr_close, 2)
             tag   = f"{timeframe} · EMA{ema_period}"
+            entry = {"ticker": ticker.upper(), "price": price, "time": timestamp, "tag": tag}
 
-            # Cross ABOVE
             if prev_close < prev_ema and curr_close > curr_ema:
-                entry = {"ticker": ticker.upper(), "price": price, "time": timestamp, "tag": tag}
+                return ("long", ticker, entry, f"📈 {ticker.upper()} crossed ABOVE EMA{ema_period} ({timeframe}) at ₹{price}")
+            elif prev_close > prev_ema and curr_close < curr_ema:
+                return ("short", ticker, entry, f"📉 {ticker.upper()} crossed BELOW EMA{ema_period} ({timeframe}) at ₹{price}")
+            return ("none", ticker, None)
+
+        except Exception as e:
+            return ("error", ticker, f"⚠️ {ticker}: Error - {str(e)}")
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(scan_ticker, t): t for t in tickers}
+        for future in as_completed(futures):
+            result = future.result()
+            if result[0] == "long":
+                _, ticker, entry, msg = result
                 data["short"] = [x for x in data["short"] if x["ticker"] != ticker.upper()]
                 if not any(x["ticker"] == ticker.upper() for x in data["long"]):
                     data["long"].insert(0, entry)
-                log.append(f"📈 {ticker.upper()} crossed ABOVE EMA{ema_period} ({timeframe}) at ₹{price}")
-
-            # Cross BELOW
-            elif prev_close > prev_ema and curr_close < curr_ema:
-                entry = {"ticker": ticker.upper(), "price": price, "time": timestamp, "tag": tag}
+                log.append(msg)
+            elif result[0] == "short":
+                _, ticker, entry, msg = result
                 data["long"] = [x for x in data["long"] if x["ticker"] != ticker.upper()]
                 if not any(x["ticker"] == ticker.upper() for x in data["short"]):
                     data["short"].insert(0, entry)
-                log.append(f"📉 {ticker.upper()} crossed BELOW EMA{ema_period} ({timeframe}) at ₹{price}")
-
-        except Exception as e:
-            log.append(f"⚠️ {ticker}: Error - {str(e)}")
+                log.append(msg)
+            elif result[0] in ("warn", "error"):
+                log.append(result[2])
 
     if not log:
         log.append(f"✅ Scan complete — no new crosses found ({len(tickers)} stocks checked)")
@@ -309,15 +321,6 @@ HTML = """<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="ticker-section">
-    <div class="section-title">Watchlist — Paste NSE Tickers</div>
-    <textarea id="tickerInput" placeholder="RELIANCE&#10;INFY&#10;TCS&#10;HDFCBANK&#10;&#10;One ticker per line, or comma-separated..."></textarea>
-    <div class="ticker-actions">
-      <button class="btn btn-yellow" onclick="saveTickers()">💾 Save Watchlist</button>
-      <span class="ticker-count" id="inputCount">0 tickers entered</span>
-    </div>
-  </div>
-
   <div class="grid">
     <div class="card">
       <div class="card-header">
@@ -342,6 +345,15 @@ HTML = """<!DOCTYPE html>
   <div class="log-section">
     <div class="log-header">Scan Log</div>
     <div class="log-body" id="logBody"><span class="log-line">Waiting for scan...</span></div>
+  </div>
+
+  <div class="ticker-section">
+    <div class="section-title">Watchlist — Paste NSE Tickers</div>
+    <textarea id="tickerInput" placeholder="RELIANCE&#10;INFY&#10;TCS&#10;HDFCBANK&#10;&#10;One ticker per line, or comma-separated..."></textarea>
+    <div class="ticker-actions">
+      <button class="btn btn-yellow" onclick="saveTickers()">💾 Save Watchlist</button>
+      <span class="ticker-count" id="inputCount">0 tickers entered</span>
+    </div>
   </div>
 </div>
 
