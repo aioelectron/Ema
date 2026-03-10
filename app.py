@@ -265,7 +265,7 @@ HTML = """<!DOCTYPE html>
 <body>
 <div class="wrap">
   <header>
-    <div class="logo">NSE <span>EMA</span> Scanner</div>
+
     <div class="badge pulse" id="scanStatus">● IDLE</div>
   </header>
 
@@ -321,7 +321,7 @@ HTML = """<!DOCTYPE html>
   <div class="grid">
     <div class="card">
       <div class="card-header">
-        <div class="card-title"><span class="dot dot-green"></span> LONG LIST <span class="count-badge" id="longCount">0</span></div>
+        <div class="card-title"><span class="dot dot-green"></span>  <span class="count-badge" id="longCount">0</span></div>
         <button class="btn btn-muted" style="font-size:10px;padding:4px 10px;" onclick="clearList('long')">Clear</button>
       </div>
       <div class="list-body" id="longList">
@@ -330,7 +330,7 @@ HTML = """<!DOCTYPE html>
     </div>
     <div class="card">
       <div class="card-header">
-        <div class="card-title"><span class="dot dot-red"></span> SHORT LIST <span class="count-badge" id="shortCount">0</span></div>
+        <div class="card-title"><span class="dot dot-red"></span>  <span class="count-badge" id="shortCount">0</span></div>
         <button class="btn btn-muted" style="font-size:10px;padding:4px 10px;" onclick="clearList('short')">Clear</button>
       </div>
       <div class="list-body" id="shortList">
