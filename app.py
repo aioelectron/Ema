@@ -11,7 +11,7 @@ import pytz
 app = Flask(__name__)
 IST = pytz.timezone('Asia/Kolkata')
 
-MAX_WORKERS = 50  # Safe limit to avoid Yahoo Finance rate-limiting
+MAX_WORKERS = 20  # Safe limit to avoid Yahoo Finance rate-limiting
 
 DATA_FILE = "data.json"
 
